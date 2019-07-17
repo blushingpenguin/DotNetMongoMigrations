@@ -17,7 +17,7 @@ before_build:
      cd ..
 environment:
   CODECOV_REPO_TOKEN:
-    secure: QTCcL5PO5FwcXfhi5ghbpgn3DS0eatZtTnBPOfcjbnvT33yxC025LtcoGdwbTVy3
+    secure: YOcqTi+52nkE0y5alQZUbpo6rXiEsVuq3q4q+0pUQg08QM1Dwrss83m9BIxnFP1/
 configuration:
   - Release
 test_script:
