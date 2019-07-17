@@ -1,6 +1,5 @@
-Build Status
---
-[http://teamcity.codebetter.com/project.html?projectId=DotNetMongoMigrations](http://teamcity.codebetter.com/project.html?projectId=DotNetMongoMigrations)
+[![ci.appveyor.com](https://ci.appveyor.com/api/projects/status/github/blushingpenguin/DotNetMongoMigrations?branch=master&svg=true)](https://ci.appveyor.com/api/projects/status/github/blushingpenguin/DotNetMongoMigrations?branch=master&svg=true)
+[![codecov.io](https://codecov.io/gh/blushingpenguin/DotNetMongoMigrations/coverage.svg?branch=master)](https://codecov.io/gh/blushingpenguin/DotNetMongoMigrations?branch=master)
 
 Why mongo migrations?
 --
@@ -8,11 +7,9 @@ We no longer need create schema migrations, as this is a schemaless database, wh
 
 However, we need migrations when:
 
-1. Rename collections
-1. Rename keys
-1. Manipulate data types
- * Moving data between types
- * Setting default values for new properties
+1. Renaming collections
+1. Renaming keys
+1. Manipulating data types, e.g. moving data between types and setting default values for new properties
 1. Index creation
 1. Removing collections / data
 
@@ -21,10 +18,11 @@ So the idea is to have a simple migration script that executes commands against 
 Why DotNetMongoMigrations?
 --
 
-1. This project is meant to allow for migrations to be created in C# or other .Net languages and kept with the code base.  
+1. This project is meant to allow for migrations to be created in C# or other .Net languages and kept with the code base.
 1. Access .Net APIs for manipulating documents
 1. Leverage existing NUnit test projects or other test projects to test migrations
 1. Provide an automatable foundation to track and apply migrations.
+1. Make development easy by automatically backing up and restoring the database state.
 
 Migration recommendations
 --
@@ -36,10 +34,10 @@ Migration recommendations
 1. Write tests of your migrations, TDD them from existing data scenarios to new forms
 1. Automate the deployment of migrations
 
-Migration 
+Migration
 --
 
-This is a simple migration that executes a mongo javascript command to rename the Customer key from Name to FullName.
+This is a simple migration that adds a new property to a collection:
 
 ```csharp
 	public class Migration1 : Migration
@@ -48,9 +46,12 @@ This is a simple migration that executes a mongo javascript command to rename th
 		{
 		}
 
-		public override void Update()
+		public override async Task UpdateAsync()
 		{
-			Database.Eval(new BsonJavaScript("db.Customers.update({}, { $rename : { 'Name' : 'FullName' } });"));
+            var collection = Database.GetCollection<BsonDocument>("TestDocs");
+            await collection.UpdateManyAsync(
+                FilterDefinition<BsonDocument>.Empty,
+                Builders<BsonDocument>.Update.Set("NewField", 1));
 		}
 	}
 ```
@@ -58,7 +59,7 @@ This is a simple migration that executes a mongo javascript command to rename th
 Collection Migration
 --
 
-These are migrations performed on every document in a given collection.  Supply the version number and collection name, then simply implement the update per document method UpdateDocument to manipulate each document.
+These are migrations performed on every document in a given collection.  Supply the version number and collection name, then simply implement the update per document method UpdateDocumentAsync to manipulate each document.  If the document should be replaced, then return true and ReplaceOneAsync will be called using the _id property of the document as a filter.
 
 ```csharp
 	public class Migration1 : CollectionMigration
@@ -69,18 +70,20 @@ These are migrations performed on every document in a given collection.  Supply 
 			Description = "Drop social security information from customers";
 		}
 
-		protected override void UpdateDocument(MongoCollection<BsonDocument> collection, BsonDocument document)
+		protected override Task<bool> UpdateDocumentAsync(MongoCollection<BsonDocument> collection, BsonDocument document)
 		{
 			document.Remove("SocialSecurityNumber");
-			collection.Save(document);
+			return Task.FromResult(true);
 		}
 	}
 ```
 
 Experimental Migrations
--- 
+--
 
 Sometimes we want to work on a migration but it's not complete yet, these can be attributed with the ExperimentalAttribute and the base migrations runner will exclude them.
+
+If any experimental migrations are applied then the migration runner will clone all the collections in the database into a database named Database_MigrationBackup. If one of these is found on the next run, then the database will be restored before migrations are applied.  Restoring the database also restores the history of applied versions, so this means that you can test your migration simply by repeatedly running it during development.
 
 ```csharp
 	[Experimental]
@@ -95,10 +98,10 @@ The project provides a MigrationRunner which contains:
 
 * DatabaseMigrationStatus
  * Contains methods to monitor the version of the database.
- * Applied migrations are stored in a collection named "DatabaseVersion", this can be configured via the VersionCollectionName instance property.  
+ * Applied migrations are stored in a collection named "DatabaseVersion", this can be configured via the VersionCollectionName instance property.
 * MigrationLocator
  * Scans the provided assemblies for migrations
- * Filters on experimental by default.  
+ * Filters on experimental by default.
  * Filters can be added/removed via the MigrationLocator.MigrationFilters list.
 
 Sample App Startup Version Check
@@ -162,9 +165,10 @@ Here is a sample test to rename a key on a document via the BsonDocument api, ob
 		{
 		}
 
-		public override void UpdateDocument(MongoCollection<BsonDocument> collection, BsonDocument document)
+		public override Task<bool> UpdateDocumentAsync(MongoCollection<BsonDocument> collection, BsonDocument document)
 		{
-			collection.Save(document);
+			Rename(document);
+			return Task.FromResult(true);
 		}
 
 		public void Rename(BsonDocument document)
@@ -175,7 +179,6 @@ Here is a sample test to rename a key on a document via the BsonDocument api, ob
 	}
 ```
 
-Thanks 
+Port
 --
-
-To Codebetter and JetBrains for hosting our builds
+This code is based on the original implementation located at https://github.com/phoenixwebgroup/DotNetMongoMigrations. It has been ported to .NET standard to allow use from both .NET core and the .NET framework, the automatic backup facility has been added, the code has been updated to the latest mongo driver and tests have been created.
