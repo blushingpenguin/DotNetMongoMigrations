@@ -1,15 +1,19 @@
 namespace MongoMigrations
 {
-	using System;
-	using System.Collections.Generic;
-	using System.Linq;
+    using System;
+    using System.Collections.Generic;
+    using System.Linq;
     using System.Threading.Tasks;
+    using Microsoft.Extensions.Logging;
+    using Microsoft.Extensions.Logging.Abstractions;
     using MongoDB.Bson;
     using MongoDB.Bson.Serialization;
-	using MongoDB.Driver;
+    using MongoDB.Driver;
 
     public class MigrationRunner
     {
+        private readonly ILogger _logger;
+
         static MigrationRunner()
         {
             Init();
@@ -20,18 +24,41 @@ namespace MongoMigrations
             BsonSerializer.RegisterSerializer(typeof(MigrationVersion), new MigrationVersionSerializer());
         }
 
-        public MigrationRunner(string mongoServerLocation, string databaseName)
-            : this(new MongoClient(mongoServerLocation), databaseName)
+        public MigrationRunner(
+            string mongoServerLocation,
+            string databaseName, 
+            ILogger<MigrationRunner> logger = null
+        )
+            : this(new MongoClient(mongoServerLocation), databaseName, logger)
         {
         }
 
-        private async Task CloneCollections(IMongoDatabase sourceDatabase, IMongoDatabase destDatabase)
+        public MigrationRunner(
+            IMongoClient client,
+            string databaseName,
+            ILogger<MigrationRunner> logger = null)
+        {
+            _logger = logger ?? NullLogger<MigrationRunner>.Instance;
+            Client = client;
+            DatabaseName = databaseName;
+            DatabaseStatus = new DatabaseMigrationStatus(this);
+            MigrationLocator = new MigrationLocator();
+        }
+
+        private async Task CloneCollections(
+            IMongoDatabase sourceDatabase, 
+            IMongoDatabase destDatabase,
+            ILogger<MigrationRunner> logger = null
+        )
         {
             var collectionNames = await sourceDatabase.ListCollectionNamesAsync();
             var copyBlock = new List<BsonDocument>(1000); // arbitrary
             await collectionNames.ForEachAsync(async (collectionName) =>
             {
-                Console.WriteLine($"Copying collection {collectionName}");
+                if (_logger != null)
+                {
+                    _logger.LogInformation($"Copying collection {collectionName}");
+                }
 
                 var sourceCollection = sourceDatabase.GetCollection<BsonDocument>(collectionName);
                 var destCollection = destDatabase.GetCollection<BsonDocument>(collectionName);
@@ -69,7 +96,7 @@ namespace MongoMigrations
             if (backupExists)
             {
                 // Restore collections from an existing database
-                Console.WriteLine($"Restoring database from backup {backupDatabaseName}");
+                _logger.LogWarning($"Restoring database from backup {backupDatabaseName}");
                 await CloneCollections(backupDatabase, database);
 
                 // Clean the entire database up
@@ -80,24 +107,14 @@ namespace MongoMigrations
             await CloneCollections(database, backupDatabase);
         }
 
-        public MigrationRunner(IMongoClient client, string databaseName)
-        {
-            Client = client;
-            DatabaseName = databaseName;
-            DatabaseStatus = new DatabaseMigrationStatus(this);
-            MigrationLocator = new MigrationLocator();
-        }
-
         public IMongoClient Client { get; set; }
         public string DatabaseName { get; set; }
-        //		public IMongoDatabase Database { get; set; }
-        //        public IMongoDatabase BackupDatabase { get; set; }
         public MigrationLocator MigrationLocator { get; set; }
         public DatabaseMigrationStatus DatabaseStatus { get; set; }
 
         public virtual Task UpdateToLatestAsync()
         {
-            Console.WriteLine(WhatWeAreUpdating() + " to latest...");
+            _logger.LogInformation(WhatWeAreUpdating() + " to latest...");
             return UpdateToAsync(MigrationLocator.LatestVersion());
         }
 
@@ -137,13 +154,13 @@ namespace MongoMigrations
 
         protected virtual async Task ApplyMigrationAsync(IMongoDatabase database, Migration migration)
         {
-            Console.WriteLine(new
+            _logger.LogInformation(new
             {
                 Message = "Applying migration",
                 migration.Version,
                 migration.Description,
                 DatabaseName
-            });
+            }.ToString());
 
             var appliedMigration = await DatabaseStatus.StartMigrationAsync(migration);
             migration.Database = database;
@@ -168,20 +185,20 @@ namespace MongoMigrations
                 migration.Description,
                 DatabaseName
             };
-            Console.WriteLine(message);
+            _logger.LogError(exception, message.ToString());
             throw new MigrationException(message.ToString(), exception);
         }
 
         public virtual async Task UpdateToAsync(MigrationVersion updateToVersion)
         {
             var currentVersion = await DatabaseStatus.GetLastAppliedMigrationAsync();
-            Console.WriteLine(new
+            _logger.LogInformation(new
             {
                 Message = WhatWeAreUpdating(),
                 currentVersion,
                 updateToVersion,
                 DatabaseName
-            });
+            }.ToString());
 
             var migrations = MigrationLocator.GetMigrationsAfter(currentVersion)
                                              .Where(m => m.Version <= updateToVersion);

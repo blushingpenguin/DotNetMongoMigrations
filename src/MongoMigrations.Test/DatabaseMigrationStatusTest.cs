@@ -1,9 +1,11 @@
 ﻿using FluentAssertions;
+using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 using NSubstitute;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
@@ -17,10 +19,11 @@ namespace MongoMigrations.Test
         public IMongoClient Client { get; set; }
         public IMongoDatabase Db { get; set; }
 
-        public DatabaseMigrationStatusMocks(string dbName)
+        public DatabaseMigrationStatusMocks(string dbName, 
+            ILogger<MigrationRunner> logger = null)
         {
             Client = new MongoClient("mongodb://localhost:27017/");
-            Runner = new MigrationRunner(Client, dbName);
+            Runner = new MigrationRunner(Client, dbName, logger);
             MigrationStatus = new DatabaseMigrationStatus(Runner);
         }
     }
@@ -28,9 +31,10 @@ namespace MongoMigrations.Test
     [Parallelizable(ParallelScope.All)]
     public class DatabaseMigrationStatusTest
     {
-        private async Task<DatabaseMigrationStatusMocks> CreateMocksAsync(string dbName)
+        private async Task<DatabaseMigrationStatusMocks> CreateMocksAsync(
+            string dbName, ILogger<MigrationRunner> logger = null)
         {
-            var mocks = new DatabaseMigrationStatusMocks(dbName);
+            var mocks = new DatabaseMigrationStatusMocks(dbName, logger);
             await mocks.Client.DropDatabaseAsync(dbName);
             mocks.Db = mocks.Runner.Client.GetDatabase(mocks.Runner.DatabaseName);
             return mocks;
@@ -171,6 +175,27 @@ namespace MongoMigrations.Test
             var am = await mocks.MigrationStatus.GetMigrationsApplied()
                     .Find(FilterDefinition<AppliedMigration>.Empty).SingleAsync();
             am.Version.Should().BeEquivalentTo(new MigrationVersion("3.4.5"));
+            await mocks.Client.DropDatabaseAsync(dbName);
+        }
+
+        [Test]
+        public async Task UsesSuppliedLogger()
+        {
+            string dbName = "4e975090-7e9a-44b4-8d31-f0e5204b3f30";
+
+            var logger = Substitute.For<ILogger<MigrationRunner>>();
+            var mocks = await CreateMocksAsync(dbName, logger);
+            mocks.Runner.MigrationLocator.LookForMigrationsInAssembly(
+                Assembly.GetExecutingAssembly());
+            await mocks.Runner.UpdateToLatestAsync();
+            var calls = logger.ReceivedCalls().ToArray();
+            calls.Length.Should().Be(5);
+            calls[0].GetArguments()[2].ToString().Should().BeEquivalentTo(
+                "Updating server(s) \"localhost\" for database " +
+                "\"4e975090-7e9a-44b4-8d31-f0e5204b3f30\" to latest...");
+            calls[4].GetArguments()[2].ToString().Should().BeEquivalentTo(
+                "{ Message = Applying migration, Version = 1.2.4, " +
+                "Description = , DatabaseName = 4e975090-7e9a-44b4-8d31-f0e5204b3f30 }");
             await mocks.Client.DropDatabaseAsync(dbName);
         }
     }

@@ -25,18 +25,30 @@ namespace MongoMigrations.Test
     }
 
     [Parallelizable(ParallelScope.All)]
-    public class MigrationTest
+    public class MigrationRunnerTest
     {
         private async Task<MigrationMocks> CreateMocksAsync(string dbName)
         {
             var mocks = new MigrationMocks();
-            mocks.Client = new MongoClient("mongodb://localhost:27017/");
+            mocks.Client = new MongoClient(Settings.DatabaseConnectionString);
             await mocks.Client.DropDatabaseAsync(dbName);
             mocks.Db = mocks.Client.GetDatabase(dbName);
             mocks.Runner = new MigrationRunner(mocks.Client, dbName);
             return mocks;
         }
-        
+
+        [Test]
+        public async Task RunNoMigrations()
+        {
+            // (Creating manually to test the other runner constructor)
+            string dbName = "a34323cf-e836-4fcb-bb58-e3834e9da2d6";
+            var client = new MongoClient(Settings.DatabaseConnectionString);
+            await client.DropDatabaseAsync(dbName);
+            var runner = new MigrationRunner(Settings.DatabaseConnectionString, dbName);
+            await runner.UpdateToLatestAsync();
+            await client.DropDatabaseAsync(dbName);
+        }
+
         [Test]
         public async Task RunMigration()
         {
@@ -54,7 +66,7 @@ namespace MongoMigrations.Test
             });
 
             mocks.Runner.MigrationLocator.MigrationFilters.Clear(); // keep experimental
-            mocks.Runner.MigrationLocator.LookForMigrationsInAssemblyOfType<MigrationTest>();
+            mocks.Runner.MigrationLocator.LookForMigrationsInAssemblyOfType<MigrationRunnerTest>();
             mocks.Runner.MigrationLocator.LookForMigrationsInAssembly(Assembly.GetExecutingAssembly());
             await mocks.Runner.UpdateToLatestAsync();
 
