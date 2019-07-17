@@ -1,0 +1,38 @@
+image: Visual Studio 2017
+version: 2.1.{build}
+dotnet_csproj:
+  patch: true
+  file: '**\*.csproj'
+  version: '{version}'
+  package_version: '{version}'
+  assembly_version: '{version}'
+  file_version: '{version}'
+  informational_version: '{version}'
+before_build:
+- cmd: nuget restore
+environment:
+  CODECOV_REPO_TOKEN:
+    secure: QTCcL5PO5FwcXfhi5ghbpgn3DS0eatZtTnBPOfcjbnvT33yxC025LtcoGdwbTVy3
+configuration:
+  - Release
+test_script:
+  - dotnet test --configuration Release /p:CollectCoverage=true /p:CoverletOutputFormat=cobertura /p:CoverletOutput="../../coverage/coverage.cobertura.xml" "src/MongoMigrations.Test/MongoMigrations.Test.csproj"
+after_test:
+- ps: |
+    $env:PATH = 'C:\msys64\usr\bin;' + $env:PATH
+    Invoke-WebRequest -Uri 'https://codecov.io/bash' -OutFile codecov.sh
+    bash codecov.sh -f "coverage/coverage.cobertural.xml" -t $env:CODECOV_REPO_TOKEN
+for:
+-
+  branches:
+    only:
+      - master
+
+  build:
+    publish_nuget: true
+
+  deploy:
+    provider: NuGet
+    api_key:
+      secure: yWR0csSBMvGp5x4I50QTopxBojnsBkWUa2v4zRvpcO1q3di3SxYJXRX3xwXyEJ88
+    skip_symbols: false
