@@ -2,7 +2,8 @@
 {
 	using System;
 	using System.Linq;
-	using MongoDB.Driver;
+    using System.Threading.Tasks;
+    using MongoDB.Driver;
 
 	public class DatabaseMigrationStatus
 	{
@@ -15,70 +16,79 @@
 			_Runner = runner;
 		}
 
-		public virtual MongoCollection<AppliedMigration> GetMigrationsApplied()
+		public virtual IMongoCollection<AppliedMigration> GetMigrationsApplied()
 		{
-			return _Runner.Database.GetCollection<AppliedMigration>(VersionCollectionName);
+			return _Runner.Client.GetDatabase(_Runner.DatabaseName)
+                .GetCollection<AppliedMigration>(VersionCollectionName);
 		}
 
-		public virtual bool IsNotLatestVersion()
+		public virtual async Task<bool> IsNotLatestVersionAsync()
 		{
 			return _Runner.MigrationLocator.LatestVersion()
-			       != GetVersion();
+			       != await GetVersionAsync();
 		}
 
-		public virtual void ThrowIfNotLatestVersion()
+		public virtual async Task ThrowIfNotLatestVersionAsync()
 		{
-			if (!IsNotLatestVersion())
+			if (!await IsNotLatestVersionAsync())
 			{
 				return;
 			}
-			var databaseVersion = GetVersion();
+			var databaseVersion = await GetVersionAsync();
 			var migrationVersion = _Runner.MigrationLocator.LatestVersion();
-			throw new ApplicationException("Database is not the expected version, database is at version: " + databaseVersion + ", migrations are at version: " + migrationVersion);
+			throw new ApplicationException("Database is not the expected version, database is at version: " + 
+                databaseVersion + ", migrations are at version: " + migrationVersion);
 		}
 
-		public virtual MigrationVersion GetVersion()
+		public virtual async Task<MigrationVersion> GetVersionAsync()
 		{
-			var lastAppliedMigration = GetLastAppliedMigration();
+			var lastAppliedMigration = await GetLastAppliedMigrationAsync();
 			return lastAppliedMigration == null
 			       	? MigrationVersion.Default()
 			       	: lastAppliedMigration.Version;
 		}
 
-		public virtual AppliedMigration GetLastAppliedMigration()
+		public virtual async Task<AppliedMigration> GetLastAppliedMigrationAsync()
 		{
-			return GetMigrationsApplied()
-				.FindAll()
-				.ToList() // in memory but this will never get big enough to matter
-				.OrderByDescending(v => v.Version)
-				.FirstOrDefault();
+            // Fetch the lot since we need to sort by the parsed version number
+            // (serialize it as 3 ints??)
+            var migrations = await GetMigrationsApplied()
+                .Find(FilterDefinition<AppliedMigration>.Empty)
+                .ToListAsync();
+            return migrations
+                .OrderByDescending(v => v.Version)
+                .FirstOrDefault();
 		}
 
-		public virtual AppliedMigration StartMigration(Migration migration)
+		public virtual async Task<AppliedMigration> StartMigrationAsync(Migration migration)
 		{
 			var appliedMigration = new AppliedMigration(migration);
-			GetMigrationsApplied().Insert(appliedMigration);
+			await GetMigrationsApplied().InsertOneAsync(appliedMigration);
 			return appliedMigration;
 		}
 
-		public virtual void CompleteMigration(AppliedMigration appliedMigration)
+		public virtual Task CompleteMigrationAsync(AppliedMigration appliedMigration)
 		{
-			appliedMigration.CompletedOn = DateTime.Now;
-			GetMigrationsApplied().Save(appliedMigration);
+            return GetMigrationsApplied().UpdateOneAsync(
+                x => x.Version == appliedMigration.Version,
+                Builders<AppliedMigration>.Update.Set(x => x.CompletedOn, DateTime.UtcNow));
 		}
 
-		public virtual void MarkUpToVersion(MigrationVersion version)
+		public virtual async Task MarkUpToVersionAsync(MigrationVersion version)
 		{
-			_Runner.MigrationLocator.GetAllMigrations()
-				.Where(m => m.Version <= version)
-				.ToList()
-				.ForEach(m => MarkVersion(m.Version));
+            var migrations = _Runner.MigrationLocator
+                .GetAllMigrations()
+                .Where(m => m.Version <= version);
+            foreach (var migration in migrations)
+            {
+                await MarkVersionAsync(migration.Version);
+            }
 		}
 
-		public virtual void MarkVersion(MigrationVersion version)
+		public virtual Task MarkVersionAsync(MigrationVersion version)
 		{
 			var appliedMigration = AppliedMigration.MarkerOnly(version);
-			GetMigrationsApplied().Insert(appliedMigration);
+			return GetMigrationsApplied().InsertOneAsync(appliedMigration);
 		}
 	}
 }

@@ -24,7 +24,7 @@ namespace RunMongoMigrations
 
 			try
 			{
-				runner.UpdateToLatest();
+                runner.UpdateToLatestAsync().GetAwaiter().GetResult();
 				return 0;
 			}
 			catch (MigrationException e)

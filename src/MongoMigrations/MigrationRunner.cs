@@ -3,99 +3,190 @@ namespace MongoMigrations
 	using System;
 	using System.Collections.Generic;
 	using System.Linq;
-	using MongoDB.Bson.Serialization;
+    using System.Threading.Tasks;
+    using MongoDB.Bson;
+    using MongoDB.Bson.Serialization;
 	using MongoDB.Driver;
 
-	public class MigrationRunner
-	{
-		static MigrationRunner()
-		{
-			Init();
-		}
+    public class MigrationRunner
+    {
+        static MigrationRunner()
+        {
+            Init();
+        }
 
-		public static void Init()
-		{
-			BsonSerializer.RegisterSerializer(typeof (MigrationVersion), new MigrationVersionSerializer());
-		}
+        public static void Init()
+        {
+            BsonSerializer.RegisterSerializer(typeof(MigrationVersion), new MigrationVersionSerializer());
+        }
 
-		public MigrationRunner(string mongoServerLocation, string databaseName)
-			: this(new MongoClient(mongoServerLocation).GetServer().GetDatabase(databaseName))
-		{
-		}
+        public MigrationRunner(string mongoServerLocation, string databaseName)
+            : this(new MongoClient(mongoServerLocation), databaseName)
+        {
+        }
 
-		public MigrationRunner(MongoDatabase database)
-		{
-			Database = database;
-			DatabaseStatus = new DatabaseMigrationStatus(this);
-			MigrationLocator = new MigrationLocator();
-		}
+        private async Task CloneCollections(IMongoDatabase sourceDatabase, IMongoDatabase destDatabase)
+        {
+            var collectionNames = await sourceDatabase.ListCollectionNamesAsync();
+            var copyBlock = new List<BsonDocument>(1000); // arbitrary
+            await collectionNames.ForEachAsync(async (collectionName) =>
+            {
+                Console.WriteLine($"Copying collection {collectionName}");
 
-		public MongoDatabase Database { get; set; }
-		public MigrationLocator MigrationLocator { get; set; }
-		public DatabaseMigrationStatus DatabaseStatus { get; set; }
+                var sourceCollection = sourceDatabase.GetCollection<BsonDocument>(collectionName);
+                var destCollection = destDatabase.GetCollection<BsonDocument>(collectionName);
+                await destCollection.DeleteManyAsync(FilterDefinition<BsonDocument>.Empty);
 
-		public virtual void UpdateToLatest()
-		{
-			Console.WriteLine(WhatWeAreUpdating() + " to latest...");
-			UpdateTo(MigrationLocator.LatestVersion());
-		}
+                var sourceCursor = await sourceCollection.Find(FilterDefinition<BsonDocument>.Empty).ToCursorAsync();
+                await sourceCursor.ForEachAsync(async (doc) =>
+                {
+                    copyBlock.Add(doc);
+                    if (copyBlock.Count >= 1000)
+                    {
+                        await destCollection.InsertManyAsync(copyBlock);
+                        copyBlock.Clear();
+                    }
+                });
+                if (copyBlock.Count > 0)
+                {
+                    await destCollection.InsertManyAsync(copyBlock);
+                    copyBlock.Clear();
+                }
+            });
+        }
 
-		private string WhatWeAreUpdating()
-		{
-			return string.Format("Updating server(s) \"{0}\" for database \"{1}\"", ServerAddresses(), Database.Name);
-		}
+        public async Task BackupAndRestore()
+        {
+            var database = Client.GetDatabase(DatabaseName);
 
-	    private string ServerAddresses()
-	    {
-            return String.Join(",", Database.Server.Instances.Select(s => s.Address.ToString()));
-	    }
+            // Check if a backup database exists
+            string backupDatabaseName = DatabaseName + "_MigrationBackup";
+            bool backupExists = (await (await Client.ListDatabaseNamesAsync()).ToListAsync()).Any(
+                x => String.Equals(x, DatabaseName, StringComparison.InvariantCultureIgnoreCase));
 
-	    protected virtual void ApplyMigrations(IEnumerable<Migration> migrations)
-		{
-			migrations.ToList()
-			          .ForEach(ApplyMigration);
-		}
+            // Get a reference to a backup database (creating if it doesn't exist)
+            var backupDatabase = Client.GetDatabase(backupDatabaseName);
+            if (backupExists)
+            {
+                // Restore collections from an existing database
+                Console.WriteLine($"Restoring database from backup {backupDatabaseName}");
+                await CloneCollections(backupDatabase, database);
 
-		protected virtual void ApplyMigration(Migration migration)
-		{
-			Console.WriteLine(new {Message = "Applying migration", migration.Version, migration.Description, DatabaseName = Database.Name});
+                // Clean the entire database up
+                await Client.DropDatabaseAsync(backupDatabaseName);
+            }
 
-			var appliedMigration = DatabaseStatus.StartMigration(migration);
-			migration.Database = Database;
-			try
-			{
-				migration.Update();
-			}
-			catch (Exception exception)
-			{
-				OnMigrationException(migration, exception);
-			}
-			DatabaseStatus.CompleteMigration(appliedMigration);
-		}
+            // Make a fresh backup
+            await CloneCollections(database, backupDatabase);
+        }
 
-		protected virtual void OnMigrationException(Migration migration, Exception exception)
-		{
-			var message = new
-				{
-					Message = "Migration failed to be applied: " + exception.Message,
-					migration.Version,
-					Name = migration.GetType(),
-					migration.Description,
-					DatabaseName = Database.Name
-				};
-			Console.WriteLine(message);
-			throw new MigrationException(message.ToString(), exception);
-		}
+        public MigrationRunner(IMongoClient client, string databaseName)
+        {
+            Client = client;
+            DatabaseName = databaseName;
+            DatabaseStatus = new DatabaseMigrationStatus(this);
+            MigrationLocator = new MigrationLocator();
+        }
 
-		public virtual void UpdateTo(MigrationVersion updateToVersion)
-		{
-			var currentVersion = DatabaseStatus.GetLastAppliedMigration();
-			Console.WriteLine(new {Message = WhatWeAreUpdating(), currentVersion, updateToVersion, DatabaseName = Database.Name});
+        public IMongoClient Client { get; set; }
+        public string DatabaseName { get; set; }
+        //		public IMongoDatabase Database { get; set; }
+        //        public IMongoDatabase BackupDatabase { get; set; }
+        public MigrationLocator MigrationLocator { get; set; }
+        public DatabaseMigrationStatus DatabaseStatus { get; set; }
 
-			var migrations = MigrationLocator.GetMigrationsAfter(currentVersion)
-			                                 .Where(m => m.Version <= updateToVersion);
+        public virtual Task UpdateToLatestAsync()
+        {
+            Console.WriteLine(WhatWeAreUpdating() + " to latest...");
+            return UpdateToAsync(MigrationLocator.LatestVersion());
+        }
 
-			ApplyMigrations(migrations);
-		}
-	}
+        private string WhatWeAreUpdating()
+        {
+            return string.Format("Updating server(s) \"{0}\" for database \"{1}\"",
+                ServerAddresses(), DatabaseName);
+        }
+
+        private string ServerAddresses()
+        {
+            return String.Join(",", Client.Settings.Servers.Select(s => s.Host));
+        }
+
+        protected virtual async Task ApplyMigrationsAsync(IEnumerable<Migration> migrations)
+        {
+            if (!migrations.Any())
+            {
+                return;
+            }
+
+            // If there are any experimental migrations, then assume we are in development mode
+            // and back the database up
+            bool experimentalMigrations = migrations.Any(
+                x => ExcludeExperimentalMigrations.HasExperimentalAttribute(x));
+            if (experimentalMigrations)
+            {
+                await BackupAndRestore();
+            }
+
+            var database = Client.GetDatabase(DatabaseName);
+            foreach (var migration in migrations)
+            {
+                await ApplyMigrationAsync(database, migration);
+            }
+        }
+
+        protected virtual async Task ApplyMigrationAsync(IMongoDatabase database, Migration migration)
+        {
+            Console.WriteLine(new
+            {
+                Message = "Applying migration",
+                migration.Version,
+                migration.Description,
+                DatabaseName
+            });
+
+            var appliedMigration = await DatabaseStatus.StartMigrationAsync(migration);
+            migration.Database = database;
+            try
+            {
+                await migration.UpdateAsync();
+            }
+            catch (Exception exception)
+            {
+                OnMigrationException(migration, exception);
+            }
+            await DatabaseStatus.CompleteMigrationAsync(appliedMigration);
+        }
+
+        protected virtual void OnMigrationException(Migration migration, Exception exception)
+        {
+            var message = new
+            {
+                Message = "Migration failed to be applied: " + exception.Message,
+                migration.Version,
+                Name = migration.GetType(),
+                migration.Description,
+                DatabaseName
+            };
+            Console.WriteLine(message);
+            throw new MigrationException(message.ToString(), exception);
+        }
+
+        public virtual async Task UpdateToAsync(MigrationVersion updateToVersion)
+        {
+            var currentVersion = await DatabaseStatus.GetLastAppliedMigrationAsync();
+            Console.WriteLine(new
+            {
+                Message = WhatWeAreUpdating(),
+                currentVersion,
+                updateToVersion,
+                DatabaseName
+            });
+
+            var migrations = MigrationLocator.GetMigrationsAfter(currentVersion)
+                                             .Where(m => m.Version <= updateToVersion);
+
+            await ApplyMigrationsAsync(migrations);
+        }
+    }
 }

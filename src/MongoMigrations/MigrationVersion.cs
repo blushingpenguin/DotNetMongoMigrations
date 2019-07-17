@@ -32,12 +32,12 @@
 			var minorString = versionParts[1];
 			if (!Int32.TryParse(minorString, out Minor))
 			{
-				throw new ArgumentException("Invalid major version value: " + minorString);
+				throw new ArgumentException("Invalid minor version value: " + minorString);
 			}
 			var revisionString = versionParts[2];
 			if (!Int32.TryParse(revisionString, out Revision))
 			{
-				throw new ArgumentException("Invalid major version value: " + revisionString);
+				throw new ArgumentException("Invalid revision version value: " + revisionString);
 			}
 		}
 
@@ -58,26 +58,35 @@
 			return !(a == b);
 		}
 
-		public static bool operator >(MigrationVersion a, MigrationVersion b)
-		{
-			return a.Major > b.Major
-			       || (a.Major == b.Major && a.Minor > b.Minor)
-			       || (a.Major == b.Major && a.Minor == b.Minor && a.Revision > b.Revision);
-		}
-
 		public static bool operator <(MigrationVersion a, MigrationVersion b)
 		{
-			return a != b && !(a > b);
+            return
+                a.Major < b.Major 
+                ? true 
+                : a.Major == b.Major ?
+                        a.Minor < b.Minor 
+                        ? true 
+                        : a.Minor == b.Minor ?
+                            a.Revision < b.Revision 
+                            ? true 
+                            : false
+                    : false
+                : false;
 		}
 
-		public static bool operator <=(MigrationVersion a, MigrationVersion b)
+		public static bool operator >(MigrationVersion a, MigrationVersion b)
 		{
-			return a == b || a < b;
+            return b < a;
 		}
 
 		public static bool operator >=(MigrationVersion a, MigrationVersion b)
 		{
-			return a == b || a > b;
+			return !(a < b);
+		}
+
+		public static bool operator <=(MigrationVersion a, MigrationVersion b)
+		{
+            return !(b < a);
 		}
 
 		public bool Equals(MigrationVersion other)
@@ -96,8 +105,10 @@
 
 		public override bool Equals(object obj)
 		{
-			if (ReferenceEquals(null, obj)) return false;
-			if (obj.GetType() != typeof (MigrationVersion)) return false;
+            if (obj == null || obj.GetType() != typeof(MigrationVersion))
+            {
+                return false;
+            }
 			return Equals((MigrationVersion) obj);
 		}
 

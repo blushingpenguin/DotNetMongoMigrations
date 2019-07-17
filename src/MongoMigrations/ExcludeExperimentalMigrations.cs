@@ -4,16 +4,21 @@ namespace MongoMigrations
 
 	public class ExcludeExperimentalMigrations : MigrationFilter
 	{
-		public override bool Exclude(Migration migration)
+        public static bool HasExperimentalAttribute(Migration migration)
+        {
+            if (migration == null)
+            {
+                return false;
+            }
+            return migration.GetType()
+                .GetCustomAttributes(true)
+                .OfType<ExperimentalAttribute>()
+                .Any();
+        }
+
+        public override bool Exclude(Migration migration)
 		{
-			if (migration == null)
-			{
-				return false;
-			}
-			return migration.GetType()
-				.GetCustomAttributes(true)
-				.OfType<ExperimentalAttribute>()
-				.Any();
+            return HasExperimentalAttribute(migration);
 		}
 	}
 }

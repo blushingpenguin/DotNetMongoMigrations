@@ -37,3 +37,6 @@ _ReSharper*/
 *logfile*
 *.orig
 [Pp]ackages/
+src/.vs/
+coverage/
+tools/
