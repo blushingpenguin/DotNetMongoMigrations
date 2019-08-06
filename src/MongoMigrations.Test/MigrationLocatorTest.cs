@@ -20,10 +20,10 @@ namespace MongoMigrations.Test
             // check migrations are ordered
             migrations.Select(x => x.Version).Should().BeEquivalentTo(new[]
             {
-                new MigrationVersion("1.0.0"),
-                new MigrationVersion("1.0.1"),
-                new MigrationVersion("1.2.4")
-            });
+                new MigrationVersion("M20190718160124_WithoutAttributeMigration"),
+                new MigrationVersion("M20190718162300_TestCollectionMigration"),
+                new MigrationVersion("M20190718163800_TestMigration")
+            }, opts => opts.WithStrictOrdering());
         }
 
         [Test]
@@ -32,11 +32,11 @@ namespace MongoMigrations.Test
             var locator = new MigrationLocator();
             locator.LookForMigrationsInAssembly(Assembly.GetExecutingAssembly());
             var migrations = locator.GetMigrationsAfter(
-                new AppliedMigration(new TestCollectionMigration()));
+                new AppliedMigration(new M20190718162300_TestCollectionMigration()));
             // check migrations are ordered
             migrations.Select(x => x.Version).Should().BeEquivalentTo(new[]
             {
-                new MigrationVersion("1.2.4")
+                new MigrationVersion("M20190718163800_TestMigration")
             });
         }
 
@@ -45,7 +45,7 @@ namespace MongoMigrations.Test
         {
             var locator = new MigrationLocator();
             locator.LatestVersion().Should().BeEquivalentTo(
-                MigrationVersion.Default());
+                MigrationVersion.Default);
         }
 
         [Test]
@@ -54,7 +54,7 @@ namespace MongoMigrations.Test
             var locator = new MigrationLocator();
             locator.LookForMigrationsInAssembly(Assembly.GetExecutingAssembly());
             locator.LatestVersion().Should().BeEquivalentTo(
-                new MigrationVersion(1, 2, 4));
+                new MigrationVersion(new DateTime(2019, 7, 18, 16, 38, 00), "TestMigration"));
         }
 
         [Test]

@@ -34,18 +34,19 @@ Migration recommendations
 1. Write tests of your migrations, TDD them from existing data scenarios to new forms
 1. Automate the deployment of migrations
 
+Versions
+--
+
+Migration are versioned by timestamp. This is preferred to a serial number to avoid merge conflicts. To ensure that version numbers are applied migration classes must be named MyyyyMMddHHmmss_Description, for example M20190806073226_AddANotNullProperty. Migrations are applied in timestamp order.
+
 Migration
 --
 
 This is a simple migration that adds a new property to a collection:
 
 ```csharp
-	public class Migration1 : Migration
+	public class M20190806072600_AddNewField : Migration
 	{
-		public Migration1 : base("1.0.0")
-		{
-		}
-
 		public override async Task UpdateAsync()
 		{
             var collection = Database.GetCollection<BsonDocument>("TestDocs");
@@ -62,14 +63,8 @@ Collection Migration
 These are migrations performed on every document in a given collection.  Supply the version number and collection name, then simply implement the update per document method UpdateDocumentAsync to manipulate each document.  If the document should be replaced, then return true and ReplaceOneAsync will be called using the _id property of the document as a filter.
 
 ```csharp
-	public class Migration1 : CollectionMigration
+	public class M20190806073300_DropSocialSecurityInfo : CollectionMigration
 	{
-		public Migration1()
-			: base("1.0.1", "Customer")
-		{
-			Description = "Drop social security information from customers";
-		}
-
 		protected override Task<bool> UpdateDocumentAsync(MongoCollection<BsonDocument> collection, BsonDocument document)
 		{
 			document.Remove("SocialSecurityNumber");
@@ -87,7 +82,7 @@ If any experimental migrations are applied then the migration runner will clone 
 
 ```csharp
 	[Experimental]
-	public class Migration1 : Migration
+	public class M20190806073400_MarmaliseData : Migration
 	{
 ```
 
@@ -150,7 +145,7 @@ Here is a sample test to rename a key on a document via the BsonDocument api, ob
 		var nameKey = "Name";
 		var nameValue = "Bob";
 		var document = new BsonDocument {{nameKey, nameValue}};
-		var migration = new MigrationToRenameNameToFullName();
+		var migration = new M20190806073514_RenameNameToFullName();
 
 		migration.Rename(document);
 
@@ -159,12 +154,8 @@ Here is a sample test to rename a key on a document via the BsonDocument api, ob
 		Expect(document[fullNameKey].AsString, Is.EqualTo(nameValue));
 	}
 
-	public class MigrationToRenameNameToFullName : CollectionMigration
+	public class M20190806073514_RenameNameToFullName : CollectionMigration
 	{
-		public MigrationToRenameNameToFullName() : base("1.5.10", "Users")
-		{
-		}
-
 		public override Task<bool> UpdateDocumentAsync(MongoCollection<BsonDocument> collection, BsonDocument document)
 		{
 			Rename(document);
@@ -181,4 +172,4 @@ Here is a sample test to rename a key on a document via the BsonDocument api, ob
 
 Port
 --
-This code is based on the original implementation located at https://github.com/phoenixwebgroup/DotNetMongoMigrations. It has been ported to .NET standard to allow use from both .NET core and the .NET framework, the automatic backup facility has been added, the code has been updated to the latest mongo driver and tests have been created.
+This code is based on the original implementation located at https://github.com/phoenixwebgroup/DotNetMongoMigrations. It has been ported to .NET standard to allow use from both .NET core and the .NET framework, the automatic backup facility has been added, the code has been updated to the latest mongo driver, tests have been created and the migration version number format has been changed to timestamps (from serial numbers).

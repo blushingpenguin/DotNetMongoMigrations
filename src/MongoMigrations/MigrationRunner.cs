@@ -1,14 +1,13 @@
 namespace MongoMigrations
 {
+    using Microsoft.Extensions.Logging;
+    using MongoDB.Bson;
+    using MongoDB.Bson.Serialization;
+    using MongoDB.Driver;
     using System;
     using System.Collections.Generic;
     using System.Linq;
     using System.Threading.Tasks;
-    using Microsoft.Extensions.Logging;
-    using Microsoft.Extensions.Logging.Abstractions;
-    using MongoDB.Bson;
-    using MongoDB.Bson.Serialization;
-    using MongoDB.Driver;
 
     public class MigrationRunner
     {
@@ -131,11 +130,6 @@ namespace MongoMigrations
 
         protected virtual async Task ApplyMigrationsAsync(IEnumerable<Migration> migrations)
         {
-            if (!migrations.Any())
-            {
-                return;
-            }
-
             // If there are any experimental migrations, then assume we are in development mode
             // and back the database up
             bool experimentalMigrations = migrations.Any(
@@ -191,19 +185,23 @@ namespace MongoMigrations
 
         public virtual async Task UpdateToAsync(MigrationVersion updateToVersion)
         {
-            var currentVersion = await DatabaseStatus.GetLastAppliedMigrationAsync();
+            var unapplied = await DatabaseStatus.GetUnappliedMigrationsAsync();
+
+            var first = unapplied.FirstOrDefault();
+            if (first == null)
+            {
+                return;
+            }
+
             _logger.LogInformation(new
             {
                 Message = WhatWeAreUpdating(),
-                currentVersion,
+                firstUnapplied = first,
                 updateToVersion,
                 DatabaseName
-            }.ToString());
+            }.ToString()); ;
 
-            var migrations = MigrationLocator.GetMigrationsAfter(currentVersion)
-                                             .Where(m => m.Version <= updateToVersion);
-
-            await ApplyMigrationsAsync(migrations);
+            await ApplyMigrationsAsync(unapplied);
         }
     }
 }

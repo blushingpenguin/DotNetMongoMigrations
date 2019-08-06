@@ -5,13 +5,15 @@ namespace MongoMigrations
 
     public abstract class Migration
 	{
-		public MigrationVersion Version { get; protected set; }
 		public string Description { get; protected set; }
 
-		protected Migration(MigrationVersion version)
-		{
-			Version = version;
-		}
+        protected Migration(string description = null)
+        {
+            Description = description;
+            Version = new MigrationVersion(GetType().Name);
+        }
+
+        public MigrationVersion Version { get; }
 
 		public IMongoDatabase Database { get; set; }
 

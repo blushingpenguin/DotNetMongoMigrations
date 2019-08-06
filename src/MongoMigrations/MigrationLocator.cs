@@ -57,13 +57,13 @@
 		{
 			if (!GetAllMigrations().Any())
 			{
-				return MigrationVersion.Default();
+                return MigrationVersion.Default;
 			}
 			return GetAllMigrations()
 				.Max(m => m.Version);
 		}
 
-		public virtual IEnumerable<Migration> GetMigrationsAfter(AppliedMigration currentVersion)
+        public virtual IEnumerable<Migration> GetMigrationsAfter(AppliedMigration currentVersion)
 		{
 			var migrations = GetAllMigrations();
 

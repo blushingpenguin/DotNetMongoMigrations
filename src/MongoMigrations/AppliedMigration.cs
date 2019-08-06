@@ -29,7 +29,7 @@ namespace MongoMigrations
 			return Version.ToString() + " started on " + StartedOn + " completed on " + CompletedOn;
 		}
 
-		public static AppliedMigration MarkerOnly(MigrationVersion version)
+        public static AppliedMigration MarkerOnly(MigrationVersion version)
 		{
 			return new AppliedMigration
 			       	{
@@ -39,5 +39,8 @@ namespace MongoMigrations
 			       		CompletedOn = DateTime.Now
 			       	};
 		}
-	}
+
+        public static AppliedMigration MarkerOnly(string version) =>
+            MarkerOnly(new MigrationVersion(version));
+    }
 }

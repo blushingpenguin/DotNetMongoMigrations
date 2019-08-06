@@ -22,7 +22,7 @@ namespace MongoMigrations.Test
 
                     writer.WriteStartDocument();
                     writer.WriteName("version");
-                    serializer.Serialize(bsContext, bsArgs, new MigrationVersion("1.2.3"));
+                    serializer.Serialize(bsContext, bsArgs, new MigrationVersion("M20010203040506_foo"));
                     writer.WriteEndDocument();
                 }
                 ms.Position = 0;
@@ -35,7 +35,7 @@ namespace MongoMigrations.Test
                     reader.ReadStartDocument();
                     reader.ReadName().Should().Be("version");
                     var version = serializer.Deserialize(bsContext, bsArgs);
-                    version.Should().BeEquivalentTo(new MigrationVersion("1.2.3"));
+                    version.Should().BeEquivalentTo(new MigrationVersion("M20010203040506_foo"));
                     reader.ReadEndDocument();
                 }
             }

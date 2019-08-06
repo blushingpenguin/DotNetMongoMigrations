@@ -22,7 +22,7 @@ namespace MongoMigrations.Test
         public DatabaseMigrationStatusMocks(string dbName, 
             ILogger<MigrationRunner> logger = null)
         {
-            Client = new MongoClient("mongodb://localhost:27017/");
+            Client = new MongoClient(Settings.DatabaseConnectionString);
             Runner = new MigrationRunner(Client, dbName, logger);
             MigrationStatus = new DatabaseMigrationStatus(Runner);
         }
@@ -58,11 +58,11 @@ namespace MongoMigrations.Test
             var applied = mocks.MigrationStatus.GetMigrationsApplied();
             await applied.InsertManyAsync(new[]
             {
-                new AppliedMigration(new TestMigration()),
-                new AppliedMigration(new TestCollectionMigration()),
+                new AppliedMigration(new M20190718163800_TestMigration()),
+                new AppliedMigration(new M20190718162300_TestCollectionMigration()),
             });
             var lastAm = await mocks.MigrationStatus.GetLastAppliedMigrationAsync();
-            lastAm.Description.Should().Be("A test collection migration");
+            lastAm.Description.Should().Be("A test migration");
             await mocks.Client.DropDatabaseAsync(dbName);
         }
 
@@ -72,74 +72,81 @@ namespace MongoMigrations.Test
             string dbName = "fa72f8df-4b49-4f58-a89c-281d44c541e3";
             var mocks = await CreateMocksAsync(dbName);
             var result = await mocks.MigrationStatus.GetVersionAsync();
-            result.Should().BeEquivalentTo(MigrationVersion.Default());
+            result.Should().BeEquivalentTo(MigrationVersion.Default);
         }
 
         [Test]
-        public async Task GetVersion_1_0_0()
+        public async Task GetVersion_M20190718163800_TestMigration()
         {
             string dbName = "ba0ffc68-9b84-4dde-8c93-a05c0ae3946d";
             var mocks = await CreateMocksAsync(dbName);
             var applied = mocks.MigrationStatus.GetMigrationsApplied();
             await applied.InsertOneAsync(
-                new AppliedMigration(new TestMigration()));
+                new AppliedMigration(new M20190718163800_TestMigration()));
             var result = await mocks.MigrationStatus.GetVersionAsync();
-            result.Should().BeEquivalentTo(new MigrationVersion(1, 0, 0));
+            result.Should().BeEquivalentTo(new MigrationVersion(
+                new DateTime(2019, 7, 18, 16, 38, 0), "TestMigration"));
             await mocks.Client.DropDatabaseAsync(dbName);
         }
 
         [Test]
-        public async Task IsNotLatestVersionFalse()
+        public async Task IsNotUpToDateAsyncFalse()
         {
             string dbName = "3d772e5f-fe5f-47ec-9238-eaf30313b67a";
             var mocks = await CreateMocksAsync(dbName);
             mocks.Runner.MigrationLocator.LookForMigrationsInAssembly(
                 Assembly.GetExecutingAssembly());
             var applied = mocks.MigrationStatus.GetMigrationsApplied();
-            await applied.InsertOneAsync(
-                new AppliedMigration(new WithoutAttributeMigration()));
-            var result = await mocks.MigrationStatus.IsNotLatestVersionAsync();
+            await applied.InsertManyAsync(new[] {
+                new AppliedMigration(new M20190718160124_WithoutAttributeMigration()),
+                new AppliedMigration(new M20190718162300_TestCollectionMigration()),
+                new AppliedMigration(new M20190718163800_TestMigration())
+            });
+            var result = await mocks.MigrationStatus.IsNotUpToDateAsync();
             result.Should().BeFalse();
             await mocks.Client.DropDatabaseAsync(dbName);
         }
 
         [Test]
-        public async Task IsNotLatestVersionTrue()
+        public async Task IsNotUpToDateAsyncTrue()
         {
             string dbName = "3ffd4dac-032b-4064-bd84-beffc922742d";
             var mocks = await CreateMocksAsync(dbName);
             mocks.Runner.MigrationLocator.LookForMigrationsInAssembly(
                 Assembly.GetExecutingAssembly());
-            var result = await mocks.MigrationStatus.IsNotLatestVersionAsync();
+            var result = await mocks.MigrationStatus.IsNotUpToDateAsync();
             result.Should().BeTrue();
             await mocks.Client.DropDatabaseAsync(dbName);
         }
 
         [Test]
-        public async Task ThrowIfNotLatestVersionFalse()
+        public async Task ThrowIfNotUpToDateFalse()
         {
             string dbName = "f13feac6-47d6-4741-9e57-00d56d94c35c";
             var mocks = await CreateMocksAsync(dbName);
             mocks.Runner.MigrationLocator.LookForMigrationsInAssembly(
                 Assembly.GetExecutingAssembly());
             var applied = mocks.MigrationStatus.GetMigrationsApplied();
-            await applied.InsertOneAsync(
-                new AppliedMigration(new WithoutAttributeMigration()));
-            Func<Task> a = () => mocks.MigrationStatus.ThrowIfNotLatestVersionAsync();
+            await applied.InsertManyAsync(new[] {
+                new AppliedMigration(new M20190718160124_WithoutAttributeMigration()),
+                new AppliedMigration(new M20190718162300_TestCollectionMigration()),
+                new AppliedMigration(new M20190718163800_TestMigration())
+            });
+            Func<Task> a = () => mocks.MigrationStatus.ThrowIfNotUpToDateAsync();
             await a.Should().NotThrowAsync();
             await mocks.Client.DropDatabaseAsync(dbName);
         }
 
         [Test]
-        public async Task ThrowIfNotLatestVersionTrue()
+        public async Task ThrowIfNotUpToDateTrue()
         {
             string dbName = "632eb793-d71c-4fb5-a236-20d44c6d99cd";
             var mocks = await CreateMocksAsync(dbName);
             mocks.Runner.MigrationLocator.LookForMigrationsInAssembly(
                 Assembly.GetExecutingAssembly());
-            Func<Task> a = () => mocks.MigrationStatus.ThrowIfNotLatestVersionAsync();
+            Func<Task> a = () => mocks.MigrationStatus.ThrowIfNotUpToDateAsync();
             (await a.Should().ThrowAsync<ApplicationException>())
-                .And.Message.Should().StartWith("Database is not the expected version");
+                .And.Message.Should().Be("Database contains unapplied migrations starting with M20190718160124_WithoutAttributeMigration");
             await mocks.Client.DropDatabaseAsync(dbName);
         }
 
@@ -150,14 +157,14 @@ namespace MongoMigrations.Test
             var mocks = await CreateMocksAsync(dbName);
             mocks.Runner.MigrationLocator.LookForMigrationsInAssembly(
                 Assembly.GetExecutingAssembly());
-            await mocks.MigrationStatus.MarkUpToVersionAsync(new MigrationVersion("1.1.1"));
+            await mocks.MigrationStatus.MarkUpToVersionAsync(new MigrationVersion("M20190718163700_marker"));
             var applied = await mocks.MigrationStatus.GetMigrationsApplied()
                 .Find(FilterDefinition<AppliedMigration>.Empty)
                 .ToListAsync();
             applied.Should().BeEquivalentTo(new[]
             {
-                new AppliedMigration(new TestMigration()),
-                new AppliedMigration(new TestCollectionMigration())
+                new AppliedMigration(new M20190718162300_TestCollectionMigration()),
+                new AppliedMigration(new M20190718160124_WithoutAttributeMigration())
             }, opts => opts
                 .Excluding(x => x.StartedOn)
                 .Excluding(x => x.CompletedOn)
@@ -171,10 +178,11 @@ namespace MongoMigrations.Test
         {
             string dbName = "24aabaf9-9bb2-4feb-afaa-3d4a2ac2f0b8";
             var mocks = await CreateMocksAsync(dbName);
-            await mocks.MigrationStatus.MarkVersionAsync(new MigrationVersion("3.4.5"));
+            await mocks.MigrationStatus.MarkVersionAsync(new MigrationVersion("M20010203040506_test"));
             var am = await mocks.MigrationStatus.GetMigrationsApplied()
                     .Find(FilterDefinition<AppliedMigration>.Empty).SingleAsync();
-            am.Version.Should().BeEquivalentTo(new MigrationVersion("3.4.5"));
+            am.Version.Should().BeEquivalentTo(new MigrationVersion(
+                new DateTime(2001, 2, 3, 4, 5,6 ), "test"));
             await mocks.Client.DropDatabaseAsync(dbName);
         }
 
@@ -194,8 +202,8 @@ namespace MongoMigrations.Test
                 "Updating server(s) \"localhost\" for database " +
                 "\"4e975090-7e9a-44b4-8d31-f0e5204b3f30\" to latest...");
             calls[4].GetArguments()[2].ToString().Should().BeEquivalentTo(
-                "{ Message = Applying migration, Version = 1.2.4, " +
-                "Description = , DatabaseName = 4e975090-7e9a-44b4-8d31-f0e5204b3f30 }");
+                "{ Message = Applying migration, Version = M20190718163800_TestMigration, " +
+                "Description = A test migration, DatabaseName = 4e975090-7e9a-44b4-8d31-f0e5204b3f30 }");
             await mocks.Client.DropDatabaseAsync(dbName);
         }
     }

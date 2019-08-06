@@ -93,7 +93,7 @@ namespace MongoMigrations.Test
             string dbName = "3b953cb1-5875-4b22-966e-66451075bd56";
             var mocks = await CreateMocksAsync(dbName);
             var locator = new TestMigrationLocator();
-            locator.Migrations.Add(new TestCollectionMigration(true));
+            locator.Migrations.Add(new M20190718162300_TestCollectionMigration(true));
             mocks.Runner.MigrationLocator = locator;
 
             var collection = mocks.Db.GetCollection<BsonDocument>("TestDocs");

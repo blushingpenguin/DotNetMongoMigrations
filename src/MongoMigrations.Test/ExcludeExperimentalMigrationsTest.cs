@@ -6,22 +6,13 @@ using System.Threading.Tasks;
 namespace MongoMigrations.Test
 {
     [Experimental]
-    public class WithAttributeMigration : Migration
+    public class M20190718160123_WithAttributeMigration : Migration
     {
-        public WithAttributeMigration() :
-            base("1.2.3")
-        {
-        }
-
         public override Task UpdateAsync() => Task.CompletedTask;
     }
 
-    public class WithoutAttributeMigration : Migration
+    public class M20190718160124_WithoutAttributeMigration : Migration
     {
-        public WithoutAttributeMigration() :
-            base("1.2.4")
-        {
-        }
 
         public override Task UpdateAsync() => Task.CompletedTask;
     }
@@ -39,14 +30,14 @@ namespace MongoMigrations.Test
         [Test]
         public void HasExperimentalAttributeTrue()
         {
-            ExcludeExperimentalMigrations.HasExperimentalAttribute(new WithAttributeMigration())
+            ExcludeExperimentalMigrations.HasExperimentalAttribute(new M20190718160123_WithAttributeMigration())
                 .Should().BeTrue();
         }
 
         [Test]
         public void HasExperimentalAttributeFalse()
         {
-            ExcludeExperimentalMigrations.HasExperimentalAttribute(new WithoutAttributeMigration())
+            ExcludeExperimentalMigrations.HasExperimentalAttribute(new M20190718160124_WithoutAttributeMigration())
                 .Should().BeFalse();
         }
 
@@ -54,8 +45,8 @@ namespace MongoMigrations.Test
         public void FilterWorks()
         {
             var filter = new ExcludeExperimentalMigrations();
-            filter.Exclude(new WithAttributeMigration()).Should().BeTrue();
-            filter.Exclude(new WithoutAttributeMigration()).Should().BeFalse();
+            filter.Exclude(new M20190718160123_WithAttributeMigration()).Should().BeTrue();
+            filter.Exclude(new M20190718160124_WithoutAttributeMigration()).Should().BeFalse();
         }
     }
 }

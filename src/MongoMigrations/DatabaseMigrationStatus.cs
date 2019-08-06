@@ -1,7 +1,8 @@
 ﻿namespace MongoMigrations
 {
 	using System;
-	using System.Linq;
+    using System.Collections.Generic;
+    using System.Linq;
     using System.Threading.Tasks;
     using MongoDB.Driver;
 
@@ -22,33 +23,43 @@
                 .GetCollection<AppliedMigration>(VersionCollectionName);
 		}
 
-		public virtual async Task<bool> IsNotLatestVersionAsync()
+        public async Task<IEnumerable<Migration>> GetUnappliedMigrationsAsync()
+        {
+            var allMigrations = _Runner.MigrationLocator.GetAllMigrations(); // ordered
+
+            var appliedMigrations = new HashSet<MigrationVersion>();
+            await (await GetMigrationsApplied().FindAsync(
+                FilterDefinition<AppliedMigration>.Empty)).ForEachAsync(x =>
+                appliedMigrations.Add(x.Version));
+
+            return allMigrations.Where(x => !appliedMigrations.Contains(x.Version)); // still ordered
+        }
+
+		public virtual async Task<bool> IsNotUpToDateAsync()
 		{
-			return _Runner.MigrationLocator.LatestVersion()
-			       != await GetVersionAsync();
+            return (await GetUnappliedMigrationsAsync()).Any();
 		}
 
-		public virtual async Task ThrowIfNotLatestVersionAsync()
+		public virtual async Task ThrowIfNotUpToDateAsync()
 		{
-			if (!await IsNotLatestVersionAsync())
+            var unapplied = (await GetUnappliedMigrationsAsync()).FirstOrDefault();
+            if (unapplied == null)
 			{
 				return;
 			}
-			var databaseVersion = await GetVersionAsync();
-			var migrationVersion = _Runner.MigrationLocator.LatestVersion();
-			throw new ApplicationException("Database is not the expected version, database is at version: " + 
-                databaseVersion + ", migrations are at version: " + migrationVersion);
+            throw new ApplicationException(
+                $"Database contains unapplied migrations starting with {unapplied.Version}");
 		}
 
 		public virtual async Task<MigrationVersion> GetVersionAsync()
 		{
 			var lastAppliedMigration = await GetLastAppliedMigrationAsync();
 			return lastAppliedMigration == null
-			       	? MigrationVersion.Default()
+			       	? MigrationVersion.Default
 			       	: lastAppliedMigration.Version;
 		}
 
-		public virtual async Task<AppliedMigration> GetLastAppliedMigrationAsync()
+        public virtual async Task<AppliedMigration> GetLastAppliedMigrationAsync()
 		{
             // Fetch the lot since we need to sort by the parsed version number
             // (serialize it as 3 ints??)

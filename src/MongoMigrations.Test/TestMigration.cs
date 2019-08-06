@@ -4,12 +4,11 @@ using System.Threading.Tasks;
 
 namespace MongoMigrations.Test
 {
-    class TestMigration : Migration
+    class M20190718163800_TestMigration : Migration
     {
-        public TestMigration() :
-            base("1.0.0")
+        public M20190718163800_TestMigration() :
+            base("A test migration")
         {
-            Description = "A test migration";
         }
 
         public override async Task UpdateAsync()
