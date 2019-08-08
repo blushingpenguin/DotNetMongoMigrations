@@ -1,5 +1,6 @@
 ﻿using MongoDB.Bson;
 using MongoDB.Driver;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace MongoMigrations.Test
@@ -11,7 +12,8 @@ namespace MongoMigrations.Test
         {
         }
 
-        public override async Task UpdateAsync()
+        public override async Task UpdateAsync(
+            CancellationToken cancellationToken)
         {
             var collection = Database.GetCollection<BsonDocument>("TestDocs");
             await collection.UpdateManyAsync(

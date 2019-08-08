@@ -1,6 +1,7 @@
 ﻿using MongoDB.Bson;
 using MongoDB.Driver;
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace MongoMigrations.Test
@@ -21,7 +22,9 @@ namespace MongoMigrations.Test
         }
 
         public override Task<bool> UpdateDocumentAsync(
-            IMongoCollection<BsonDocument> collection, BsonDocument document)
+            IMongoCollection<BsonDocument> collection,
+            BsonDocument document,
+            CancellationToken cancellationToken)
         {
             if (Throw)
             {

@@ -7,6 +7,7 @@ namespace MongoMigrations
     using System;
     using System.Collections.Generic;
     using System.Linq;
+    using System.Threading;
     using System.Threading.Tasks;
 
     public class MigrationRunner
@@ -44,50 +45,52 @@ namespace MongoMigrations
             MigrationLocator = new MigrationLocator();
         }
 
-        private async Task CloneCollections(
+        private async Task CloneCollectionsAsync(
             IMongoDatabase sourceDatabase, 
             IMongoDatabase destDatabase,
-            ILogger<MigrationRunner> logger = null
+            CancellationToken cancellationToken = default(CancellationToken)
         )
         {
-            var collectionNames = await sourceDatabase.ListCollectionNamesAsync();
+            var collectionNames = await sourceDatabase.ListCollectionNamesAsync(null, cancellationToken);
             var copyBlock = new List<BsonDocument>(1000); // arbitrary
             await collectionNames.ForEachAsync(async (collectionName) =>
             {
-                if (_logger != null)
-                {
-                    _logger.LogInformation($"Copying collection {collectionName}");
-                }
+                _logger.LogInformation($"Copying collection {collectionName}");
 
                 var sourceCollection = sourceDatabase.GetCollection<BsonDocument>(collectionName);
                 var destCollection = destDatabase.GetCollection<BsonDocument>(collectionName);
-                await destCollection.DeleteManyAsync(FilterDefinition<BsonDocument>.Empty);
+                await destCollection.DeleteManyAsync(FilterDefinition<BsonDocument>.Empty,
+                    cancellationToken);
 
-                var sourceCursor = await sourceCollection.Find(FilterDefinition<BsonDocument>.Empty).ToCursorAsync();
-                await sourceCursor.ForEachAsync(async (doc) =>
+                var sources = await sourceCollection.FindAsync(FilterDefinition<BsonDocument>.Empty,
+                    null, cancellationToken);
+                await sources.ForEachAsync(async (doc) =>
                 {
                     copyBlock.Add(doc);
                     if (copyBlock.Count >= 1000)
                     {
-                        await destCollection.InsertManyAsync(copyBlock);
+                        await destCollection.InsertManyAsync(copyBlock, null, cancellationToken);
                         copyBlock.Clear();
                     }
                 });
                 if (copyBlock.Count > 0)
                 {
-                    await destCollection.InsertManyAsync(copyBlock);
+                    await destCollection.InsertManyAsync(copyBlock, null, cancellationToken);
                     copyBlock.Clear();
                 }
-            });
+            }, cancellationToken);
         }
 
-        public async Task BackupAndRestore()
+        public async Task BackupAndRestoreAsync(
+            CancellationToken cancellationToken = default(CancellationToken))
         {
             var database = Client.GetDatabase(DatabaseName);
 
             // Check if a backup database exists
             string backupDatabaseName = DatabaseName + "_MigrationBackup";
-            bool backupExists = (await (await Client.ListDatabaseNamesAsync()).ToListAsync()).Any(
+            var dbNames = await Client.ListDatabaseNamesAsync(cancellationToken);
+            var dbNamesList = await dbNames.ToListAsync(cancellationToken);
+            bool backupExists = dbNamesList.Any(
                 x => String.Equals(x, DatabaseName, StringComparison.InvariantCultureIgnoreCase));
 
             // Get a reference to a backup database (creating if it doesn't exist)
@@ -96,14 +99,14 @@ namespace MongoMigrations
             {
                 // Restore collections from an existing database
                 _logger.LogWarning($"Restoring database from backup {backupDatabaseName}");
-                await CloneCollections(backupDatabase, database);
+                await CloneCollectionsAsync(backupDatabase, database, cancellationToken);
 
                 // Clean the entire database up
-                await Client.DropDatabaseAsync(backupDatabaseName);
+                await Client.DropDatabaseAsync(backupDatabaseName, cancellationToken);
             }
 
             // Make a fresh backup
-            await CloneCollections(database, backupDatabase);
+            await CloneCollectionsAsync(database, backupDatabase, cancellationToken);
         }
 
         public IMongoClient Client { get; set; }
@@ -111,10 +114,11 @@ namespace MongoMigrations
         public MigrationLocator MigrationLocator { get; set; }
         public DatabaseMigrationStatus DatabaseStatus { get; set; }
 
-        public virtual Task UpdateToLatestAsync()
+        public virtual Task UpdateToLatestAsync(
+            CancellationToken cancellationToken = default(CancellationToken))
         {
             _logger.LogInformation(WhatWeAreUpdating() + " to latest...");
-            return UpdateToAsync(MigrationLocator.LatestVersion());
+            return UpdateToAsync(MigrationLocator.LatestVersion(), cancellationToken);
         }
 
         private string WhatWeAreUpdating()
@@ -128,7 +132,8 @@ namespace MongoMigrations
             return String.Join(",", Client.Settings.Servers.Select(s => s.Host));
         }
 
-        protected virtual async Task ApplyMigrationsAsync(IEnumerable<Migration> migrations)
+        protected virtual async Task ApplyMigrationsAsync(IEnumerable<Migration> migrations,
+            CancellationToken cancellationToken)
         {
             // If there are any experimental migrations, then assume we are in development mode
             // and back the database up
@@ -136,17 +141,18 @@ namespace MongoMigrations
                 x => ExcludeExperimentalMigrations.HasExperimentalAttribute(x));
             if (experimentalMigrations)
             {
-                await BackupAndRestore();
+                await BackupAndRestoreAsync(cancellationToken);
             }
 
             var database = Client.GetDatabase(DatabaseName);
             foreach (var migration in migrations)
             {
-                await ApplyMigrationAsync(database, migration);
+                await ApplyMigrationAsync(database, migration, cancellationToken);
             }
         }
 
-        protected virtual async Task ApplyMigrationAsync(IMongoDatabase database, Migration migration)
+        protected virtual async Task ApplyMigrationAsync(IMongoDatabase database,
+            Migration migration, CancellationToken cancellationToken)
         {
             _logger.LogInformation(new
             {
@@ -156,17 +162,19 @@ namespace MongoMigrations
                 DatabaseName
             }.ToString());
 
-            var appliedMigration = await DatabaseStatus.StartMigrationAsync(migration);
+            var appliedMigration = await DatabaseStatus.StartMigrationAsync(
+                migration, cancellationToken);
             migration.Database = database;
             try
             {
-                await migration.UpdateAsync();
+                await migration.UpdateAsync(cancellationToken);
             }
             catch (Exception exception)
             {
                 OnMigrationException(migration, exception);
             }
-            await DatabaseStatus.CompleteMigrationAsync(appliedMigration);
+            await DatabaseStatus.CompleteMigrationAsync(
+                appliedMigration, cancellationToken);
         }
 
         protected virtual void OnMigrationException(Migration migration, Exception exception)
@@ -183,9 +191,11 @@ namespace MongoMigrations
             throw new MigrationException(message.ToString(), exception);
         }
 
-        public virtual async Task UpdateToAsync(MigrationVersion updateToVersion)
+        public virtual async Task UpdateToAsync(MigrationVersion updateToVersion,
+            CancellationToken cancellationToken = default(CancellationToken))
         {
-            var unapplied = await DatabaseStatus.GetUnappliedMigrationsAsync();
+            var unapplied = await DatabaseStatus.GetUnappliedMigrationsAsync(
+                cancellationToken);
 
             var first = unapplied.FirstOrDefault();
             if (first == null)
@@ -201,7 +211,7 @@ namespace MongoMigrations
                 DatabaseName
             }.ToString()); ;
 
-            await ApplyMigrationsAsync(unapplied);
+            await ApplyMigrationsAsync(unapplied, cancellationToken);
         }
     }
 }

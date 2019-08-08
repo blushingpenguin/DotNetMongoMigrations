@@ -3,6 +3,7 @@ namespace MongoMigrations
     using MongoDB.Bson;
     using MongoDB.Driver;
     using System;
+    using System.Threading;
     using System.Threading.Tasks;
 
     public abstract class CollectionMigration : Migration
@@ -20,20 +21,23 @@ namespace MongoMigrations
             return null;
         }
 
-        public override async Task UpdateAsync()
+        public override async Task UpdateAsync(CancellationToken cancellationToken)
         {
             var collection = GetCollection();
-            var documents = await GetDocumentsAsync(collection);
-            await UpdateDocumentsAsync(collection, documents);
+            var documents = await GetDocumentsAsync(collection, cancellationToken);
+            await UpdateDocumentsAsync(collection, documents, cancellationToken);
         }
 
-        public virtual Task UpdateDocumentsAsync(IMongoCollection<BsonDocument> collection, IAsyncCursor<BsonDocument> documents)
+        public virtual Task UpdateDocumentsAsync(
+            IMongoCollection<BsonDocument> collection,
+            IAsyncCursor<BsonDocument> documents,
+            CancellationToken cancellationToken)
         {
             return documents.ForEachAsync(async document =>
             {
                 try
                 {
-                    if (await UpdateDocumentAsync(collection, document))
+                    if (await UpdateDocumentAsync(collection, document, cancellationToken))
                     {
                         var result = await collection.ReplaceOneAsync(
                             Builders<BsonDocument>.Filter.Eq("_id", document.GetElement("_id").Value),
@@ -49,7 +53,7 @@ namespace MongoMigrations
                 {
                     OnErrorUpdatingDocument(document, exception);
                 }
-            });
+            }, cancellationToken);
         }
 
         protected virtual void OnErrorUpdatingDocument(BsonDocument document, Exception exception)
@@ -66,17 +70,20 @@ namespace MongoMigrations
             throw new MigrationException(message.ToString(), exception);
         }
 
-        public abstract Task<bool> UpdateDocumentAsync(IMongoCollection<BsonDocument> collection, BsonDocument document);
+        public abstract Task<bool> UpdateDocumentAsync(
+            IMongoCollection<BsonDocument> collection, BsonDocument document, 
+            CancellationToken cancellationToken);
 
         protected virtual IMongoCollection<BsonDocument> GetCollection()
         {
             return Database.GetCollection<BsonDocument>(CollectionName);
         }
 
-        protected virtual Task<IAsyncCursor<BsonDocument>> GetDocumentsAsync(IMongoCollection<BsonDocument> collection)
+        protected virtual Task<IAsyncCursor<BsonDocument>> GetDocumentsAsync(
+            IMongoCollection<BsonDocument> collection, CancellationToken cancellationToken)
         {
             var query = Filter() ?? FilterDefinition<BsonDocument>.Empty;
-            return collection.Find(query).ToCursorAsync();
+            return collection.Find(query).ToCursorAsync(cancellationToken);
         }
     }
 }

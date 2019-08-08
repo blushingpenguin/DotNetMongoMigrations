@@ -1,6 +1,7 @@
 namespace MongoMigrations
 {
 	using MongoDB.Driver;
+    using System.Threading;
     using System.Threading.Tasks;
 
     public abstract class Migration
@@ -17,6 +18,6 @@ namespace MongoMigrations
 
 		public IMongoDatabase Database { get; set; }
 
-		public abstract Task UpdateAsync();
+        public abstract Task UpdateAsync(CancellationToken cancellationToken);
 	}
 }

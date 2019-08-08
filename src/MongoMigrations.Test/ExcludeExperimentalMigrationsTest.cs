@@ -1,6 +1,6 @@
 ﻿using FluentAssertions;
 using NUnit.Framework;
-using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace MongoMigrations.Test
@@ -8,13 +8,14 @@ namespace MongoMigrations.Test
     [Experimental]
     public class M20190718160123_WithAttributeMigration : Migration
     {
-        public override Task UpdateAsync() => Task.CompletedTask;
+        public override Task UpdateAsync(
+            CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     public class M20190718160124_WithoutAttributeMigration : Migration
     {
-
-        public override Task UpdateAsync() => Task.CompletedTask;
+        public override Task UpdateAsync(
+            CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     [Parallelizable(ParallelScope.All)]
