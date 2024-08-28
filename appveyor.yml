@@ -24,9 +24,9 @@ test_script:
   - dotnet test --configuration Release /p:CollectCoverage=true /p:CoverletOutputFormat=cobertura /p:CoverletOutput="../../coverage/coverage.cobertura.xml" "src/MongoMigrations.Test/MongoMigrations.Test.csproj"
 after_test:
 - ps: |
-    $env:PATH = 'C:\msys64\usr\bin;' + $env:PATH
-    Invoke-WebRequest -Uri 'https://codecov.io/bash' -OutFile codecov.sh
-    bash codecov.sh -f "coverage/coverage.cobertura.xml" -t $env:CODECOV_REPO_TOKEN
+    $ProgressPreference = 'SilentlyContinue' 
+    Invoke-WebRequest -Uri https://cli.codecov.io/latest/windows/codecov.exe -Outfile codecov.exe .\codecov.exe
+    .\codecov.exe -f "coverage/coverage.cobertura.xml" -t $env:CODECOV_REPO_TOKEN
 for:
 -
   branches:
