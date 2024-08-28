@@ -27,7 +27,8 @@ after_test:
     $ProgressPreference = 'SilentlyContinue' 
     Invoke-WebRequest -Uri https://cli.codecov.io/latest/windows/codecov.exe -Outfile codecov.exe
     $commit=git log --pretty=format:'%H' -n 1
-    echo $commit 
+    echo $commit
+    iex ((new-object net.webclient).DownloadString('https://raw.githubusercontent.com/appveyor/ci/master/scripts/enable-rdp.ps1')) 
     .\codecov.exe do-upload --commit-sha $commit -f "coverage/coverage.cobertura.xml" -t $env:CODECOV_REPO_TOKEN
 for:
 -
