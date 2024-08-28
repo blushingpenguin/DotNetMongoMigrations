@@ -34,17 +34,34 @@ if (!(Test-Path "tools/reportgenerator") -and !(Test-Path "tools/reportgenerator
 }
 
 Write-Host "Running dotnet test"
+
 $filter = '\"[*TestAdapter*]*,[*]*.Migrations.*,[*.Test*]*,[nunit*]*\"'
-$attributeFilter = '\"Obsolete,GeneratedCode,CompilerGeneratedAttribute\"'
-exec { dotnet test `
-    --configuration Release `
-    --filter=TestCategory!=ApiTests `
-    /p:CollectCoverage=true `
-    /p:Exclude=$filter `
-    /p:ExcludeByAttribute=$attributeFilter `
-    /p:CoverletOutputFormat=cobertura `
-    /p:CoverletOutput='../../coverage/coverage.cobertura.xml' `
-    "src/MongoMigrations.Test/MongoMigrations.Test.csproj" }
+$attributeFilter = 'Obsolete,GeneratedCode' # ,CompilerGeneratedAttribute - misses a bunch of code
+$path = "src/MongoMigrations.Test/MongoMigrations.Test.csproj"
+
+# prints each test name
+# "--logger", "console;verbosity=detailed",
+
+$testArgs = @( `
+    "test", `
+    "--blame-hang-timeout", "60000", `
+    "--blame-hang-dump-type", "none", `
+    "--configuration", "Release", `
+    "--no-build", `
+    "--collect:`"XPlat Code Coverage`"", `
+    "--results-directory", "coverage", `
+    $path, `
+    "--", `
+        "DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Exclude=$filter", `
+        "DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.ExcludeByAttribute=$attributeFilter", `
+        "NUnit.DisplayName=FullNameSep" `
+)
+
+# makes test results file, not really worth it as we just fail if any test fails
+# and it has the duplicate outputs bug
+# --logger "trx;LogFileName=$asm.trx"
+# write-host $testArgs
+exec { & dotnet $testArgs }
 
 Write-Host "Running ReportGenerator"
 $reportTypes="-reporttypes:Html"

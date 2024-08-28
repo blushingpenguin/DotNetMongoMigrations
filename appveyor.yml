@@ -26,7 +26,8 @@ after_test:
 - ps: |
     $ProgressPreference = 'SilentlyContinue' 
     Invoke-WebRequest -Uri https://cli.codecov.io/latest/windows/codecov.exe -Outfile codecov.exe
-    $commit=git log --pretty=format:'%H' -n 1 
+    $commit=git log --pretty=format:'%H' -n 1
+    echo $commit 
     .\codecov.exe do-upload --commit-sha $commit -f "coverage/coverage.cobertura.xml" -t $env:CODECOV_REPO_TOKEN
 for:
 -
