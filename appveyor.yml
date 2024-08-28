@@ -25,7 +25,7 @@ test_script:
 after_test:
 - ps: |
     $ProgressPreference = 'SilentlyContinue' 
-    Invoke-WebRequest -Uri https://cli.codecov.io/latest/windows/codecov.exe -Outfile codecov.exe .\codecov.exe
+    Invoke-WebRequest -Uri https://cli.codecov.io/latest/windows/codecov.exe -Outfile codecov.exe
     .\codecov.exe -f "coverage/coverage.cobertura.xml" -t $env:CODECOV_REPO_TOKEN
 for:
 -
