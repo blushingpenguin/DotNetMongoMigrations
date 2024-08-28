@@ -28,9 +28,9 @@ after_test:
     Invoke-WebRequest -Uri https://cli.codecov.io/latest/windows/codecov.exe -Outfile codecov.exe
     $commit=git log --pretty=format:'%H' -n 1
     echo $commit
-    $blockRdp=true;
-    iex ((new-object net.webclient).DownloadString('https://raw.githubusercontent.com/appveyor/ci/master/scripts/enable-rdp.ps1')) 
     .\codecov.exe do-upload --commit-sha $commit -f "coverage/coverage.cobertura.xml" -t $env:CODECOV_REPO_TOKEN
+on_finish:
+- ps: $blockRdp=true; iex ((new-object net.webclient).DownloadString('https://raw.githubusercontent.com/appveyor/ci/master/scripts/enable-rdp.ps1'))
 for:
 -
   branches:
@@ -43,5 +43,5 @@ for:
   deploy:
     provider: NuGet
     api_key:
-      secure: lo9gC4NDoECBxAzgZZMFKklAQGmyL7VOIfMzPqRB1InlB4D5g4A+tSGUITR2pS6i
+      secure: KqKTxwdbcvlB9Hp5+5rdk6nANSM4IAd+NKA+Ojik7d6eLk0/JGblNJlnUNXARmd5
     skip_symbols: false
