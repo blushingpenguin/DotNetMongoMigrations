@@ -2,7 +2,20 @@
 {
     using System;
     using Microsoft.Extensions.Logging;
-    using Microsoft.Extensions.Logging.Abstractions.Internal;
+
+    internal sealed class NullScope : IDisposable
+    {
+        public static NullScope Instance { get; } = new NullScope();
+
+        private NullScope()
+        {
+        }
+
+        /// <inheritdoc />
+        public void Dispose()
+        {
+        }
+    }
 
     public class NullLogger<T> : ILogger<T>
     {
